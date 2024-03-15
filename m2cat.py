@@ -49,27 +49,33 @@ def main():
       lines = input_file.readlines()
       last_line_index = len(lines) - 1
       for i, line in enumerate(lines):
+        processed_line = False
         is_last_line = (i == last_line_index)
 
         # Contains chinese characters
-        if regex.match(r"\p{Han}+", line):
+        if regex.match(r".*\p{Han}+.*", line):
           # Print the Mandarin "as is"
           output_file.write(line)
           # Store the translated Cantonese
-          cantonese_lines.append(translate(text_translator, line))
+          cantonese_line = translate(text_translator, line)
+          cantonese_lines.append(cantonese_line)
           # Store the Annotated Jyutping
-          jyutping_lines.append(get_jyutping_line(line))
+          jyutping_lines.append(get_jyutping_line(cantonese_line))
+          processed_line = True
 
         # Reached a blank line or end of file
-        elif regex.match(r"^\s*$", line) or is_last_line:
+        if regex.match(r"^\s*$", line) or is_last_line is True:
           for cantonese_line in cantonese_lines:
             output_file.write(cantonese_line)
           for jyutping_line in jyutping_lines:
             output_file.write(jyutping_line)
+            output_file.write("\n")
           cantonese_lines = []
           jyutping_lines = [] 
           output_file.write("\n")
-        else:
+          processed_line = True
+
+        if processed_line is not True:
           output_file.write(line)
 
 def translate(text_translator: TextTranslationClient, line: str) -> str:
