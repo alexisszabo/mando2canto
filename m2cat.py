@@ -1,7 +1,12 @@
+import argparse
 import os
 import pycantonese
 import regex
-import sys
+from argparse import (
+  ArgumentParser
+)
+
+# pip install azure-ai-translation-text
 from azure.ai.translation.text.models import (
   InputTextItem
 )
@@ -16,6 +21,9 @@ from azure.core.exceptions import (
 )
 
 def main():
+  parser = setup_parser()
+  args = parser.parse_args()
+
   translator_credential = TranslatorCredential(
     os.getenv("AZURE_TRANSLATOR_KEY_1"),
     os.getenv("AZURE_TRANSLATOR_REGION")
@@ -28,14 +36,10 @@ def main():
 
   #get_supported_languages(text_translator)
 
-  if len(sys.argv) != 2 and len(sys.argv) != 3:
-    print("Must specify input file!\n")
-    sys.exit(1)
+  input_file_name = args.files[0]
 
-  input_file_name = sys.argv[1]
-
-  if len(sys.argv) == 3:
-    output_file_name = sys.argv[2]
+  if len(args.files) == 2:
+    output_file_name = args.files[1]
   else:
     output_file_name = input_file_name.replace('.txt', '_canto.txt')
 
@@ -43,8 +47,10 @@ def main():
 
   with open(input_file_name, 'r', encoding='utf-8') as input_file:
     with open(output_file_name, 'w', encoding='utf-8') as output_file:
+      chinese_lines = []
       cantonese_lines = []
       jyutping_lines = []
+      n_jyutping_lines = 0
 
       lines = input_file.readlines()
       last_line_index = len(lines) - 1
@@ -52,28 +58,50 @@ def main():
         processed_line = False
         is_last_line = (i == last_line_index)
 
-        # Contains chinese characters
-        if regex.match(r".*\p{Han}+.*", line):
-          # Print the Mandarin "as is"
-          output_file.write(line)
-          # Store the translated Cantonese
-          cantonese_line = translate(text_translator, line)
-          cantonese_lines.append(cantonese_line)
-          # Store the Annotated Jyutping
-          jyutping_lines.append(get_jyutping_line(cantonese_line))
-          processed_line = True
-
-        # Reached a blank line or end of file
-        if regex.match(r"^\s*$", line) or is_last_line is True:
-          for cantonese_line in cantonese_lines:
-            output_file.write(cantonese_line)
-          for jyutping_line in jyutping_lines:
-            output_file.write(jyutping_line)
+        if(args.regenerate_jyutping):
+          # Line is not jyutping and we have found one or more lines of jyutping already
+          if not regex.match(r".*[a-z][1-6].*", line) and n_jyutping_lines > 0:
+            # If there are X lines of jyutping, then redo it based on the last X lines of chinese.
+            # This assumes that there is either only Cantonese before, or alternatively, first Mandarin, then Cantonese
+            for n in range(-1*n_jyutping_lines, 0):
+              if n < -1:
+                print(f"jyutpinging {chinese_lines[n]}")
+              output_file.write(get_jyutping_line(chinese_lines[n]))
             output_file.write("\n")
-          cantonese_lines = []
-          jyutping_lines = [] 
-          output_file.write("\n")
-          processed_line = True
+            chinese_lines.clear()
+            n_jyutping_lines = 0
+          # It's chinese, store it in the chinese 
+          if regex.match(r".*\p{Han}+.*", line):
+            chinese_lines.append(line)
+          # It's jyutping, track how many jyutping linese there are
+          if regex.match(r".*[a-z][1-6].*", line):
+            if n_jyutping_lines > 1:
+              print("Found jyutping!")
+            n_jyutping_lines += 1
+            processed_line = True
+        else:
+          # Contains chinese characters
+          if regex.match(r".*\p{Han}+.*", line):
+            # Print the Mandarin "as is"
+            output_file.write(line)
+            # Store the translated Cantonese
+            cantonese_line = translate(text_translator, line)
+            cantonese_lines.append(cantonese_line)
+            # Store the Annotated Jyutping
+            jyutping_lines.append(get_jyutping_line(cantonese_line))
+            processed_line = True
+
+          # Reached a blank line or end of file
+          if regex.match(r"^\s*$", line) or is_last_line is True:
+            for cantonese_line in cantonese_lines:
+              output_file.write(cantonese_line)
+            for jyutping_line in jyutping_lines:
+              output_file.write(jyutping_line)
+              output_file.write("\n")
+            cantonese_lines = []
+            jyutping_lines = [] 
+            output_file.write("\n")
+            processed_line = True
 
         if processed_line is not True:
           output_file.write(line)
@@ -141,6 +169,12 @@ def get_jyutping_word(tuple: tuple) -> str:
     return regex.sub(r'([1-6])([a-z])', r'\1-\2', tuple[1])
   else:
     return tuple[0]
+
+def setup_parser() -> ArgumentParser:
+  parser = argparse.ArgumentParser(description='Translate existing to mandarin to cantonese and add jyutping')
+  parser.add_argument("files", nargs="+")
+  parser.add_argument('--regenerate_jyutping', action='store_true', help='Regenerate Jyutping')
+  return parser
 
 if __name__ == "__main__":
   main()
