@@ -2,6 +2,7 @@ import argparse
 import os
 import pycantonese
 import regex
+import time
 from argparse import (
   ArgumentParser
 )
@@ -113,6 +114,7 @@ def translate(text_translator: TextTranslationClient, line: str) -> str:
     input_text_elements = [ InputTextItem(text = line) ]
     response = text_translator.translate(content = input_text_elements, to = target_languages, from_parameter = source_language)
     translation = response[0] if response else None
+    time.sleep(0.5)
 
     if translation:
       for translated_text in translation.translations:
